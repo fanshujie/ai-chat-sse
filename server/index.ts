@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import fs from 'node:fs'
+import path from 'node:path'
 
 dotenv.config()
 
@@ -16,12 +17,54 @@ const BASE = 'https://api.deepseek.com'
 const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-flash'
 
 // 从 data/prompts.md 顶部读取 system prompt（D2 起由你维护）
-function systemPrompt(): string {
-  try {
-    return fs.readFileSync('data/prompts.md', 'utf-8').slice(0, 800)
-  } catch {
-    return '你是一个有帮助的 AI 助手。'
+// function systemPrompt(): string {
+//   try {
+//     return fs.readFileSync('data/prompts.md', 'utf-8').slice(0, 800)
+//   } catch {
+//     return '你是一个有帮助的 AI 助手。'
+//   }
+// }
+const PROMPTS_FILE = path.resolve(process.cwd(), 'data/prompts.md')
+const CONFIG_FILE = path.resolve(process.cwd(), 'data/prompt-config.json')
+
+type Parts = { role: string; fewShot: string; json: string }
+type Config = { variant: string; temperature: number; disableThinking: boolean; jsonMode: boolean }
+
+const DEFAULT_CONFIG: Config = {
+  variant: 'role', temperature: 0.3, disableThinking: true, jsonMode: false
+}
+
+function parsePrompts(): Parts {
+  const text = fs.readFileSync(PROMPTS_FILE, 'utf-8')
+  const parts: Parts = { role: '', fewShot: '', json: '' }
+  for (const block of text.split(/^## /m)) {
+    const lines = block.split('\n')
+    const title = lines.shift() || ''
+    const body = lines
+      .filter(l => !/^\s*<!--/.test(l) && !/-->\s*$/.test(l))
+      .join('\n')
+      .trim()
+    if (title.startsWith('1.')) parts.role = body
+    else if (title.startsWith('2.')) parts.fewShot = body
+    else if (title.startsWith('3.')) parts.json = body
   }
+  return parts
+}
+
+function loadConfig(): Config {
+  try {
+    return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) }
+  } catch (e) {
+    console.warn('[config] 读取失败，使用默认值：', String(e))
+    return DEFAULT_CONFIG
+  }
+}
+
+function buildSystem(variant: string, parts: Parts): string | null {
+  if (variant === 'none') return null
+  if (variant === 'fewshot') return parts.role + '\n\n' + parts.fewShot
+  if (variant === 'json') return parts.role + '\n\n' + parts.json
+  return parts.role
 }
 
 function sseError(res: express.Response, msg: string) {
@@ -42,11 +85,25 @@ app.post('/api/chat', async (req, res) => {
     return
   }
 
-  const userMessages = req.body.messages ?? []
+  // const userMessages = req.body.messages ?? []
+  // const messages = [
+  //   { role: 'system', content: systemPrompt() },
+  //   ...userMessages
+  // ]
+
+  const cfg = loadConfig()
+  const parts = parsePrompts()
+  const sys = buildSystem(cfg.variant, parts)
   const messages = [
-    { role: 'system', content: systemPrompt() },
-    ...userMessages
+    ...(sys ? [{ role: 'system' as const, content: sys }] : []),
+    ...(req.body.messages ?? [])
   ]
+  console.log('[chat]', {
+    variant: cfg.variant,
+    temperature: cfg.temperature,
+    thinking: cfg.disableThinking ? 'off' : 'on',
+    jsonMode: cfg.jsonMode
+  })
 
   try {
     const upstream = await fetch(`${BASE}/chat/completions`, {
@@ -58,7 +115,12 @@ app.post('/api/chat', async (req, res) => {
       body: JSON.stringify({
         model: MODEL,
         messages,
-        stream: true
+        stream: true,
+        temperature: cfg.temperature,
+        reasoning_effort: cfg.disableThinking ? 'none' : undefined,
+        response_format: (cfg.jsonMode || cfg.variant === 'json')
+          ? { type: 'json_object' }
+          : undefined
       })
     })
 

@@ -1,0 +1,6 @@
+{
+  "variant": "role",
+  "temperature": 0.7,
+  "disableThinking": true,
+  "jsonMode": false
+}
