@@ -1,6 +1,6 @@
 # Prompt 模板库（v0.2）
 
-> 这是 D1 起的 Prompt 模板库，每天往里加。server/index.ts 按 `##` 段落读取，只取第 1 段作 system，其余由 `data/prompt-config.json` 的 `variant` 切换；每次请求重读，改文件不用重启。
+> 这是 D1 起的 Prompt 模板库，每天往里加。`server/index.ts` 按 `##` 分段读取（1 角色设定 / 2 少样本 / 3 结构化输出），system 内容由 `data/prompt-config.json` 的 `variant` 决定：`none` 不放 system、`role` 只放第 1 段、`fewshot` / `json` 放「第 1 段 + 对应段」；每次请求重读，改文件不用重启。
 
 ## 1. 角色设定（system）
 你是一名严谨的基金销售合规助手。
@@ -19,5 +19,5 @@
 
 | 版本 | 现象 | 原因 | 改法 |
 |---|---|---|---|
-| v0.1 | 要纯 JSON，却返回 json 代码块 + 自创字段 + 混入「风险提示 / 免责声明」 | 整份模板库前 800 字全塞进 system，三条模板互相污染 | 按 `##` 段落隔离；用 `variant` 切换；`json_object` + 后端校验 |
-| v0.2 | ③ 组 `variant=json` 返回可直接 `JSON.parse` 的纯 JSON：`{"合规结论": "…", "依据": "资料中未说明…", "风险提示": "…"}`，无代码块、无自创字段、无免责声明；`role` 组仍返回自由文本 | 按 `##` 段落只取「1. 角色设定」，JSON 要求仅在 `json` variant 才拼进 system，三条模板不再互相污染；且 `response_format: json_object` 与 system 里的「请以 JSON 返回」双指示同时满足 | 段落隔离 + `variant` 切换 + 参数与 prompt 双指示；**`json_object` 只保证语法合法，字段名仍要后端校验**（D2 尚未加校验，D3 补） |
+| v0.1 | 要纯 JSON，却返回 json 代码块 + 自创字段 + 混入「风险提示 / 免责声明」 | 整份模板库前 800 字全塞进 system，三条模板互相污染 | 按 `##` 段落隔离；用 `variant` 切换；`json_object` + prompt 明确写 JSON 指令（**后端字段校验 D4 补**） |
+| v0.2 | ③ 组 `variant=json` 返回可直接 `JSON.parse` 的纯 JSON：`{"合规结论": "…", "依据": "资料中未说明…", "风险提示": "…"}`，无代码块、无自创字段、无免责声明；`role` 组仍返回自由文本 | 按 `##` 段落只取「1. 角色设定」，JSON 要求仅在 `json` variant 才拼进 system，三条模板不再互相污染；且 `response_format: json_object` 与 system 里的「请以 JSON 返回」双指示同时满足 | 段落隔离 + `variant` 切换 + 参数与 prompt 双指示；**`json_object` 只保证语法合法，字段名仍要后端校验**（后端字段校验尚未做，D3 未补、顺延 **D4**） |
