@@ -146,4 +146,15 @@ app.post('/api/chat', async (req, res) => {
   res.end()
 })
 
+// 生产：托管 vite build 出来的 dist —— 容器里前端和接口同一个端口，不需要 CORS / 代理
+const DIST = path.resolve(process.cwd(), 'dist')
+if (fs.existsSync(DIST)) {
+  app.use(express.static(DIST))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next()
+    res.sendFile(path.join(DIST, 'index.html'))
+  })
+  console.log('[static] serving', DIST)
+}
+
 app.listen(3001, () => console.log(`✅ API server on http://localhost:3001 | model=${MODEL}`))

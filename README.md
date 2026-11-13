@@ -38,6 +38,21 @@ DEEPSEEK_MODEL=deepseek-flash   # 官方改名时只改这一行，不用翻代�
 
 `.env` 已被 `.gitignore` 忽略，**不要提交**。
 
+### Docker 运行（生产模式：一个端口）
+
+```bash
+docker build -t ai-chat .
+docker run --rm -p 3001:3001 --env-file .env ai-chat
+# 或
+docker compose up -d
+```
+
+打开 <http://localhost:3001>（生产模式下前端由 Express 托管，不再需要 5173 和 Vite 代理）。
+
+多阶段构建：阶段 1 装全量依赖并 `vite build` 出 `dist`，阶段 2 只带生产依赖、`dist`、`server` 和 `data`，最终镜像约 284MB。
+镜像里**没有 `.env`**，密钥由 `--env-file` / `env_file` 在运行时注入；`data/` 通过数据卷挂载，改 prompt 配置不用重新构建镜像。
+命令速查见 `docs/docker-commands.md`。
+
 ## 目录结构
 
 ```
@@ -45,10 +60,14 @@ src/
   App.vue                    # 组装层：布局、自动滚动、错误横幅、输入区
   components/Message.vue     # 纯展示：role / content / pending 三个 props
   composables/useChat.ts     # 状态与网络：messages/input/busy/err + send()/abort()
-server/index.ts              # SSE 代理、system prompt 组装、错误帧回传
+server/index.ts              # SSE 代理、system prompt 组装、静态托管、错误帧回传
+server/schema.ts             # 结构化输出的字段校验（纯函数，配 3 个用例）
 data/prompts.md              # Prompt 模板库（按 ## 段落隔离）
 data/prompt-config.json      # variant / temperature / disableThinking / jsonMode
 data/kb/                     # 虚构脱敏的基金合规文档（供后续 RAG 使用）
+Dockerfile                   # 多阶段构建：构建阶段 + 运行阶段
+docker-compose.yml           # 一条命令起服务 + 数据卷挂载
+docs/docker-commands.md      # Docker / Linux 常用命令速查
 ```
 
 ## 关键实现
